@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+
+  <title>Phone Light Motion Test</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      background: #05060a;
+      color: white;
+    }
+
+    #app {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #05060a;
+    }
+
+    .centerPanel {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      padding: 28px;
+      width: min(88vw, 420px);
+      border-radius: 28px;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: 0 20px 80px rgba(0,0,0,0.4);
+      z-index: 10;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+    }
+
+    p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.72);
+    }
+
+    #qr {
+      width: 230px;
+      height: 230px;
+      margin-top: 24px;
+      padding: 12px;
+      border-radius: 18px;
+      background: white;
+    }
+
+    #roomText {
+      margin-top: 16px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.52);
+      word-break: break-all;
+    }
+
+    #status {
+      position: fixed;
+      left: 18px;
+      bottom: 16px;
+      z-index: 20;
+      font-size: 12px;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.03em;
+    }
+
+    .phoneScreen {
+      width: 100vw;
+      height: 100vh;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(255,255,255,0.15), transparent 28%),
+        #05060a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .phoneCard {
+      width: 100%;
+      max-width: 420px;
+      padding: 30px 24px;
+      border-radius: 30px;
+      background: rgba(255,255,255,0.08);
+      box-shadow: 0 20px 80px rgba(0,0,0,0.45);
+    }
+
+    .phoneTitle {
+      font-size: 22px;
+      font-weight: 650;
+      margin-bottom: 12px;
+    }
+
+    .phoneText {
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 24px;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 999px;
+      padding: 18px 20px;
+      font-size: 17px;
+      font-weight: 650;
+      color: #05060a;
+      background: white;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .smallText {
+      margin-top: 18px;
+      font-size: 12px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.45);
+    }
+
+    .meter {
+      margin-top: 22px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      overflow: hidden;
+    }
+
+    .meterFill {
+      width: 0%;
+      height: 100%;
+      border-radius: 999px;
+      background: white;
+      transition: width 0.08s linear;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+  <div id="status">loading...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
+
+    // ここを自分の Firebase 設定に置き換えてください
+    const firebaseConfig = {
+      apiKey: "AIzaSyDAbRihqZUzLjBEmUDcRKztlSbgxkESs4M",
+      authDomain: "phone-light-test.firebaseapp.com",
+      databaseURL: "https://phone-light-test-default-rtdb.firebaseio.com/",
+      projectId: "phone-light-test",
+      storageBucket: "phone-light-test.firebasestorage.app",
+      messagingSenderId: "720544705799",
+      appId: "1:720544705799:web:d417c7dbaebc7f8f6e29a2",
+      measurementId: "G-8524Q5F6WQ"
+    };
+
+    const firebaseApp = initializeApp(firebaseConfig);
+    const db = getDatabase(firebaseApp);
+
+    const params = new URLSearchParams(location.search);
+    const mode = params.get("mode") || "display";
+
+    const appEl = document.getElementById("app");
+    const statusEl = document.getElementById("status");
+
+    function makeRoomId() {
+      return Math.random().toString(36).slice(2, 8);
+    }
+
+    function getBaseUrl() {
+      return location.origin + location.pathname;
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function validNumber(value, fallback = 0) {
+      if (typeof value === "number" && !Number.isNaN(value)) {
+        return value;
+      }
+      return fallback;
+    }
+
+    if (mode === "phone") {
+      startPhone();
+    } else {
+      startDisplay();
+    }
+
+    function startDisplay() {
+      const room = params.get("room") || makeRoomId();
+
+      const displayUrl = `${getBaseUrl()}?mode=display&room=${room}`;
+      const phoneUrl = `${getBaseUrl()}?mode=phone&room=${room}`;
+
+      if (!params.get("room")) {
+        history.replaceState(null, "", displayUrl);
+      }
+
+      const qrUrl =
+        "https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=" +
+        encodeURIComponent(phoneUrl);
+
+      appEl.innerHTML = `
+        <canvas id="canvas"></canvas>
+
+        <div class="centerPanel" id="qrPanel">
+          <h1>スマホを接続</h1>
+          <p>
+            スマホで QR コードを読み取り、<br>
+            センサーを開始してください。
+          </p>
+          <img id="qr" src="${qrUrl}" alt="QR code" />
+          <div id="roomText">room: ${room}</div>
+        </div>
+      `;
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const qrPanel = document.getElementById("qrPanel");
+
+      let width = 0;
+      let height = 0;
+      let dpr = 1;
+
+      let dotX = window.innerWidth / 2;
+      let dotY = window.innerHeight / 2;
+      let velocityX = 0;
+      let velocityY = 0;
+
+      let latestMotion = {
+        ax: 0,
+        ay: 0,
+        az: 0,
+        beta: 0,
+        gamma: 0,
+        rotationAlpha: 0,
+        rotationBeta: 0,
+        rotationGamma: 0,
+        time: 0
+      };
+
+      function resizeCanvas() {
+        dpr = window.devicePixelRatio || 1;
+        width = window.innerWidth;
+        height = window.innerHeight;
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        dotX = clamp(dotX, 0, width);
+        dotY = clamp(dotY, 0, height);
+      }
+
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
+      const motionRef = ref(db, `rooms/${room}/motion`);
+
+      onValue(motionRef, (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        latestMotion = {
+          ax: validNumber(data.ax),
+          ay: validNumber(data.ay),
+          az: validNumber(data.az),
+          beta: validNumber(data.beta),
+          gamma: validNumber(data.gamma),
+          rotationAlpha: validNumber(data.rotationAlpha),
+          rotationBeta: validNumber(data.rotationBeta),
+          rotationGamma: validNumber(data.rotationGamma),
+          time: validNumber(data.time)
+        };
+
+        statusEl.textContent = "connected / receiving motion";
+
+        if (qrPanel) {
+          qrPanel.style.opacity = "0";
+          qrPanel.style.pointerEvents = "none";
+        }
+      });
+
+      let lastFrameTime = performance.now();
+
+      function drawLight() {
+        const now = performance.now();
+        const dt = Math.min(0.033, (now - lastFrameTime) / 1000);
+        lastFrameTime = now;
+
+        const dataIsFresh = Date.now() - latestMotion.time < 800;
+
+        if (dataIsFresh) {
+          const ax = clamp(latestMotion.ax, -12, 12);
+          const ay = clamp(latestMotion.ay, -12, 12);
+          const beta = clamp(latestMotion.beta, -60, 60);
+          const gamma = clamp(latestMotion.gamma, -60, 60);
+          const rBeta = clamp(latestMotion.rotationBeta, -120, 120);
+          const rGamma = clamp(latestMotion.rotationGamma, -120, 120);
+
+          const forceX = ax * 260 + gamma * 8 + rBeta * 2.5;
+          const forceY = -ay * 260 + beta * 8 + rGamma * 2.5;
+
+          velocityX += forceX * dt;
+          velocityY += forceY * dt;
+        }
+
+        const friction = Math.pow(0.90, dt * 60);
+        velocityX *= friction;
+        velocityY *= friction;
+
+        dotX += velocityX * dt;
+        dotY += velocityY * dt;
+
+        const radius = 18;
+
+        if (dotX < radius) {
+          dotX = radius;
+          velocityX *= -0.45;
+        }
+
+        if (dotX > width - radius) {
+          dotX = width - radius;
+          velocityX *= -0.45;
+        }
+
+        if (dotY < radius) {
+          dotY = radius;
+          velocityY *= -0.45;
+        }
+
+        if (dotY > height - radius) {
+          dotY = height - radius;
+          velocityY *= -0.45;
+        }
+
+        ctx.fillStyle = "rgba(5, 6, 10, 0.16)";
+        ctx.fillRect(0, 0, width, height);
+
+        const glow = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, 140);
+        glow.addColorStop(0, "rgba(255,255,255,1)");
+        glow.addColorStop(0.12, "rgba(255,255,255,0.85)");
+        glow.addColorStop(0.34, "rgba(160,200,255,0.35)");
+        glow.addColorStop(1, "rgba(160,200,255,0)");
+
+        ctx.beginPath();
+        ctx.fillStyle = glow;
+        ctx.arc(dotX, dotY, 140, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = "rgba(255,255,255,1)";
+        ctx.arc(dotX, dotY, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        requestAnimationFrame(drawLight);
+      }
+
+      ctx.fillStyle = "#05060a";
+      ctx.fillRect(0, 0, width, height);
+      drawLight();
+
+      statusEl.textContent = "waiting for phone";
+    }
+
+    function startPhone() {
+      const room = params.get("room");
+
+      if (!room) {
+        appEl.innerHTML = `
+          <div class="phoneScreen">
+            <div class="phoneCard">
+              <div class="phoneTitle">room がありません</div>
+              <div class="phoneText">
+                パソコン画面の QR コードから開いてください。
+              </div>
+            </div>
+          </div>
+        `;
+        statusEl.textContent = "no room";
+        return;
+      }
+
+      appEl.innerHTML = `
+        <div class="phoneScreen">
+          <div class="phoneCard">
+            <div class="phoneTitle">スマホを動かす</div>
+            <div class="phoneText">
+              ボタンを押してセンサーを開始します。<br>
+              その後、スマホをゆっくり振る・傾けると、<br>
+              パソコン画面の光点が動きます。
+            </div>
+
+            <button id="startButton">センサーを開始</button>
+
+            <div class="meter">
+              <div class="meterFill" id="meterFill"></div>
+            </div>
+
+            <div class="smallText" id="phoneInfo">
+              iPhone の場合、センサー許可の確認が表示されます。
+            </div>
+          </div>
+        </div>
+      `;
+
+      const startButton = document.getElementById("startButton");
+      const phoneInfo = document.getElementById("phoneInfo");
+      const meterFill = document.getElementById("meterFill");
+
+      const motionRef = ref(db, `rooms/${room}/motion`);
+
+      let latest = {
+        ax: 0,
+        ay: 0,
+        az: 0,
+        beta: 0,
+        gamma: 0,
+        rotationAlpha: 0,
+        rotationBeta: 0,
+        rotationGamma: 0
+      };
+
+      let lastSendTime = 0;
+      let sensorStarted = false;
+
+      async function requestPermissions() {
+        let motionAllowed = true;
+        let orientationAllowed = true;
+
+        if (
+          typeof DeviceMotionEvent !== "undefined" &&
+          typeof DeviceMotionEvent.requestPermission === "function"
+        ) {
+          const result = await DeviceMotionEvent.requestPermission();
+          motionAllowed = result === "granted";
+        }
+
+        if (
+          typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function"
+        ) {
+          const result = await DeviceOrientationEvent.requestPermission();
+          orientationAllowed = result === "granted";
+        }
+
+        return motionAllowed || orientationAllowed;
+      }
+
+      function sendLatest() {
+        const now = Date.now();
+
+        // Firebase への書き込みが多すぎないように、約20fpsに制限
+        if (now - lastSendTime < 50) return;
+        lastSendTime = now;
+
+        const strength =
+          Math.abs(latest.ax) +
+          Math.abs(latest.ay) +
+          Math.abs(latest.az) +
+          Math.abs(latest.rotationBeta) * 0.02 +
+          Math.abs(latest.rotationGamma) * 0.02;
+
+        const percent = clamp(strength * 8, 0, 100);
+        meterFill.style.width = percent + "%";
+
+        set(motionRef, {
+          ax: latest.ax,
+          ay: latest.ay,
+          az: latest.az,
+          beta: latest.beta,
+          gamma: latest.gamma,
+          rotationAlpha: latest.rotationAlpha,
+          rotationBeta: latest.rotationBeta,
+          rotationGamma: latest.rotationGamma,
+          time: now
+        });
+      }
+
+      function handleMotion(event) {
+        const acceleration = event.acceleration || {};
+        const accelerationWithGravity = event.accelerationIncludingGravity || {};
+        const rotation = event.rotationRate || {};
+
+        const ax = acceleration.x;
+        const ay = acceleration.y;
+        const az = acceleration.z;
+
+        const gx = accelerationWithGravity.x;
+        const gy = accelerationWithGravity.y;
+        const gz = accelerationWithGravity.z;
+
+        latest.ax =
+          typeof ax === "number" ? ax :
+          typeof gx === "number" ? gx * 0.25 :
+          0;
+
+        latest.ay =
+          typeof ay === "number" ? ay :
+          typeof gy === "number" ? gy * 0.25 :
+          0;
+
+        latest.az =
+          typeof az === "number" ? az :
+          typeof gz === "number" ? gz * 0.25 :
+          0;
+
+        latest.rotationAlpha = validNumber(rotation.alpha);
+        latest.rotationBeta = validNumber(rotation.beta);
+        latest.rotationGamma = validNumber(rotation.gamma);
+
+        sendLatest();
+      }
+
+      function handleOrientation(event) {
+        latest.beta = validNumber(event.beta);
+        latest.gamma = validNumber(event.gamma);
+        sendLatest();
+      }
+
+      startButton.addEventListener("click", async () => {
+        try {
+          const allowed = await requestPermissions();
+
+          if (!allowed) {
+            phoneInfo.textContent = "センサーの使用が許可されませんでした。";
+            statusEl.textContent = "permission denied";
+            return;
+          }
+
+          if (!sensorStarted) {
+            window.addEventListener("devicemotion", handleMotion);
+            window.addEventListener("deviceorientation", handleOrientation);
+            sensorStarted = true;
+          }
+
+          startButton.textContent = "センサー作動中";
+          phoneInfo.textContent = "スマホを振る・傾けると、パソコンの光点が動きます。";
+          statusEl.textContent = `room: ${room} / sensor started`;
+
+          set(motionRef, {
+            ax: 0,
+            ay: 0,
+            az: 0,
+            beta: 0,
+            gamma: 0,
+            rotationAlpha: 0,
+            rotationBeta: 0,
+            rotationGamma: 0,
+            time: Date.now()
+          });
+        } catch (error) {
+          phoneInfo.textContent = "センサー開始時にエラーが発生しました。";
+          statusEl.textContent = "sensor error";
+          console.error(error);
+        }
+      });
+
+      statusEl.textContent = `room: ${room}`;
+    }
+  </script>
+</body>
+</html>
