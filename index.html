@@ -286,12 +286,13 @@
       resizeCanvas();
       window.addEventListener("resize", resizeCanvas);
 
-      const pointerRef = ref(db, `rooms/${room}/pointer`);
+      const pointerRef = ref(db, `rooms/${room}/sessions/${sessionId}/pointer`);
 
       onValue(pointerRef, (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
         if (data.sessionId !== sessionId) return;
+        if (data.state !== "active") return;
 
         targetX = clamp(validNumber(data.pointerX, 0.5), 0, 1);
         targetY = clamp(validNumber(data.pointerY, 0.5), 0, 1);
@@ -399,7 +400,7 @@
       const phoneInfo = document.getElementById("phoneInfo");
       const meterFill = document.getElementById("meterFill");
 
-      const pointerRef = ref(db, `rooms/${room}/pointer`);
+      const pointerRef = ref(db, `rooms/${room}/sessions/${sessionId}/pointer`);
 
       let latestBeta = 0;
       let latestGamma = 0;
@@ -457,6 +458,7 @@
         meterFill.style.width = clamp(moveAmount * 180, 0, 100) + "%";
 
         set(pointerRef, {
+          state: "active",
           sessionId: sessionId,
           pointerX: pointerX,
           pointerY: pointerY,
