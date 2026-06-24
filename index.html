@@ -40,7 +40,7 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: min(88vw, 430px);
+      width: min(88vw, 440px);
       padding: 28px;
       border-radius: 28px;
       text-align: center;
@@ -61,7 +61,7 @@
     p {
       margin: 0;
       font-size: 14px;
-      line-height: 1.7;
+      line-height: 1.75;
       color: rgba(255,255,255,0.72);
     }
 
@@ -180,9 +180,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
     import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 
-    // =====================================================
-    // ここを自分の Firebase 設定に置き換えてください
-    // =====================================================
     const firebaseConfig = {
       apiKey: "AIzaSyDAbRihqZUzLjBEmUDcRKztlSbgxkESs4M",
       authDomain: "phone-light-test.firebaseapp.com",
@@ -205,6 +202,10 @@
 
     function makeRoomId() {
       return Math.random().toString(36).slice(2, 8);
+    }
+
+    function makeSessionId() {
+      return Date.now().toString(36) + "-" + makeRoomId();
     }
 
     function getBaseUrl() {
@@ -233,9 +234,10 @@
     // =====================================================
     function startDisplay() {
       const room = makeRoomId();
-      const sessionId = `${Date.now().toString(36)}-${makeRoomId()}`;
+      const sessionId = makeSessionId();
 
-      const phoneUrl = `${getBaseUrl()}?mode=phone&room=${room}&session=${sessionId}`;
+      const phoneUrl =
+        `${getBaseUrl()}?mode=phone&room=${room}&session=${sessionId}`;
 
       history.replaceState(null, "", getBaseUrl());
 
@@ -249,11 +251,12 @@
         <div class="centerPanel" id="qrPanel">
           <h1>スマホを接続</h1>
           <p>
+            パソコンとスマホをインターネットに接続してください。<br>
             スマホで QR コードを読み取り、<br>
             センサーを開始してください。
           </p>
           <img id="qr" src="${qrUrl}" alt="QR code" />
-          <div id="roomText">room: ${room}</div>
+          <div id="roomText">room: ${room}<br>session: ${sessionId}</div>
         </div>
       `;
 
@@ -356,20 +359,22 @@
     // PHONE CONTROLLER
     // =====================================================
     function startPhone() {
+      const room = params.get("room");
       const sessionId = params.get("session");
 
       if (!room || !sessionId) {
         appEl.innerHTML = `
           <div class="phoneScreen">
             <div class="phoneCard">
-              <div class="phoneTitle">room がありません</div>
+              <div class="phoneTitle">接続情報がありません</div>
               <div class="phoneText">
-                パソコン画面の QR コードから開いてください。
+                パソコン画面の QR コードから開いてください。<br>
+                通常のリンクを直接開いた場合、操作できません。
               </div>
             </div>
           </div>
         `;
-        statusEl.textContent = "no room";
+        statusEl.textContent = "no room or session";
         return;
       }
 
@@ -378,9 +383,9 @@
           <div class="phoneCard">
             <div class="phoneTitle">レーザーポインター</div>
             <div class="phoneText">
+              パソコンとスマホをインターネットに接続してください。<br>
               スマホをパソコン画面の中心に向けて、<br>
-              「センサーを開始」を押してください。<br>
-              その後、スマホの向きに合わせて光点が動きます。
+              「センサーを開始」を押してください。
             </div>
 
             <button id="startButton">センサーを開始</button>
@@ -407,16 +412,19 @@
       let latestBeta = 0;
       let latestGamma = 0;
 
-      let centerBeta = null;
-      let centerGamma = null;
+      let centerBeta = 0;
+      let centerGamma = 0;
 
       let pointerX = 0.5;
       let pointerY = 0.5;
 
+      let hasOrientation = false;
+      let centerReady = false;
+      let pendingCenterReset = false;
+
       let lastSendTime = 0;
       let sensorStarted = false;
 
-      // 数字を大きくすると光点が大きく動く
       const sensitivityX = 0.020;
       const sensitivityY = 0.018;
 
@@ -470,9 +478,10 @@
         });
       }
 
-      function resetCenter() {
+      function setCurrentDirectionAsCenter() {
         centerBeta = latestBeta;
         centerGamma = latestGamma;
+        centerReady = true;
 
         pointerX = 0.5;
         pointerY = 0.5;
@@ -482,15 +491,26 @@
         phoneInfo.textContent = "現在のスマホの向きを画面中心として設定しました。";
       }
 
+      function requestCenterReset() {
+        if (hasOrientation) {
+          setCurrentDirectionAsCenter();
+        } else {
+          pendingCenterReset = true;
+          phoneInfo.textContent = "センサー値を取得したら中心を設定します。";
+        }
+      }
+
       function handleOrientation(event) {
         const beta = validNumber(event.beta, latestBeta);
         const gamma = validNumber(event.gamma, latestGamma);
 
         latestBeta = beta;
         latestGamma = gamma;
+        hasOrientation = true;
 
-        if (centerBeta === null || centerGamma === null) {
-          resetCenter();
+        if (!centerReady || pendingCenterReset) {
+          pendingCenterReset = false;
+          setCurrentDirectionAsCenter();
         }
 
         const deltaBeta = deadzone(beta - centerBeta);
@@ -517,10 +537,10 @@
             sensorStarted = true;
           }
 
-          resetCenter();
+          pendingCenterReset = true;
 
           startButton.textContent = "センサー作動中";
-          phoneInfo.textContent = "スマホの向きに合わせて、パソコンの光点が動きます。";
+          phoneInfo.textContent = "スマホを画面中央に向けたまま、少し待ってください。";
           statusEl.textContent = `room: ${room} / laser pointer`;
         } catch (error) {
           phoneInfo.textContent = "センサー開始時にエラーが発生しました。";
@@ -530,7 +550,7 @@
       });
 
       centerButton.addEventListener("click", () => {
-        resetCenter();
+        requestCenterReset();
       });
 
       statusEl.textContent = `room: ${room}`;
