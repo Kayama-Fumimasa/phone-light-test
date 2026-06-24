@@ -40,7 +40,9 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: min(88vw, 440px);
+      width: min(88vw, 460px);
+      max-height: 88vh;
+      overflow-y: auto;
       padding: 28px;
       border-radius: 28px;
       text-align: center;
@@ -72,6 +74,18 @@
       padding: 12px;
       border-radius: 18px;
       background: white;
+      object-fit: contain;
+    }
+
+    #qrError {
+      display: none;
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.1);
+      font-size: 13px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.72);
     }
 
     #roomText {
@@ -81,6 +95,36 @@
       word-break: break-all;
     }
 
+    .urlBox {
+      width: 100%;
+      min-height: 78px;
+      margin-top: 16px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 14px;
+      background: rgba(0,0,0,0.28);
+      color: rgba(255,255,255,0.72);
+      font-size: 11px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .smallButton {
+      margin-top: 12px;
+      width: 100%;
+      border: none;
+      border-radius: 999px;
+      padding: 13px 18px;
+      font-size: 14px;
+      font-weight: 650;
+      color: #05060a;
+      background: white;
+      cursor: pointer;
+    }
+
     #status {
       position: fixed;
       left: 18px;
@@ -88,6 +132,8 @@
       z-index: 20;
       font-size: 12px;
       color: rgba(255,255,255,0.45);
+      max-width: calc(100vw - 36px);
+      word-break: break-all;
     }
 
     .phoneScreen {
@@ -169,6 +215,47 @@
       background: white;
       transition: width 0.06s linear;
     }
+
+    .touchPad {
+      margin-top: 18px;
+      width: 100%;
+      height: 150px;
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.16), transparent 18%),
+        rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      position: relative;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    .touchPadLabel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 14px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.38);
+      pointer-events: none;
+    }
+
+    .touchDot {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: white;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 24px rgba(255,255,255,0.85);
+      pointer-events: none;
+    }
+
+    a {
+      color: white;
+    }
   </style>
 </head>
 
@@ -177,9 +264,6 @@
   <div id="status">loading...</div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
-
     const firebaseConfig = {
       apiKey: "AIzaSyDAbRihqZUzLjBEmUDcRKztlSbgxkESs4M",
       authDomain: "phone-light-test.firebaseapp.com",
@@ -191,14 +275,80 @@
       measurementId: "G-8524Q5F6WQ"
     };
 
-    const firebaseApp = initializeApp(firebaseConfig);
-    const db = getDatabase(firebaseApp);
+    const FIREBASE_APP_URL =
+      "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 
-    const params = new URLSearchParams(location.search);
-    const mode = params.get("mode") || "display";
+    const FIREBASE_DATABASE_URL =
+      "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 
     const appEl = document.getElementById("app");
     const statusEl = document.getElementById("status");
+
+    let db = null;
+    let dbRef = null;
+    let dbSet = null;
+    let dbOnValue = null;
+
+    window.addEventListener("error", (event) => {
+      statusEl.textContent = "error: " + event.message;
+      console.error(event.error || event.message);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      statusEl.textContent = "promise error: " + event.reason;
+      console.error(event.reason);
+    });
+
+    boot();
+
+    async function boot() {
+      try {
+        const firebaseModules = await Promise.all([
+          import(FIREBASE_APP_URL),
+          import(FIREBASE_DATABASE_URL)
+        ]);
+
+        const { initializeApp } = firebaseModules[0];
+        const { getDatabase, ref, set, onValue } = firebaseModules[1];
+
+        const firebaseApp = initializeApp(firebaseConfig);
+        db = getDatabase(firebaseApp);
+
+        dbRef = ref;
+        dbSet = set;
+        dbOnValue = onValue;
+
+        const params = new URLSearchParams(location.search);
+        const mode = params.get("mode") || "display";
+
+        if (mode === "phone") {
+          startPhone(params);
+        } else {
+          startDisplay();
+        }
+      } catch (error) {
+        showFatalError(
+          "ページの初期化に失敗しました",
+          "JavaScript の読み込み、または初期化の途中でエラーが発生しました。ブラウザの Console も確認してください。",
+          error
+        );
+      }
+    }
+
+    function showFatalError(title, message, error) {
+      appEl.innerHTML = `
+        <div class="phoneScreen">
+          <div class="phoneCard">
+            <div class="phoneTitle">${escapeHtml(title)}</div>
+            <div class="phoneText">${escapeHtml(message)}</div>
+            <div class="smallText">${escapeHtml(String(error && error.message ? error.message : error))}</div>
+          </div>
+        </div>
+      `;
+
+      statusEl.textContent = "fatal error";
+      console.error(error);
+    }
 
     function makeRoomId() {
       return Math.random().toString(36).slice(2, 8);
@@ -208,8 +358,24 @@
       return Date.now().toString(36) + "-" + makeRoomId();
     }
 
-    function getBaseUrl() {
-      return location.origin + location.pathname;
+    function getCleanPageUrl() {
+      const url = new URL(location.href);
+      url.search = "";
+      url.hash = "";
+      return url.href;
+    }
+
+    function makePhoneUrl(room, sessionId) {
+      const url = new URL(getCleanPageUrl());
+      url.searchParams.set("mode", "phone");
+      url.searchParams.set("room", room);
+      url.searchParams.set("session", sessionId);
+      return url.href;
+    }
+
+    function makeQrUrl(text) {
+      return "https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=" +
+        encodeURIComponent(text);
     }
 
     function clamp(value, min, max) {
@@ -217,30 +383,25 @@
     }
 
     function validNumber(value, fallback = 0) {
-      if (typeof value === "number" && !Number.isNaN(value)) {
+      if (typeof value === "number" && Number.isFinite(value)) {
         return value;
       }
       return fallback;
     }
 
-    if (mode === "phone") {
-      startPhone();
-    } else {
-      startDisplay();
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
     }
 
     function startDisplay() {
       const room = makeRoomId();
       const sessionId = makeSessionId();
-
-      const phoneUrl =
-        `${getBaseUrl()}?mode=phone&room=${room}&session=${sessionId}`;
-
-      history.replaceState(null, "", getBaseUrl());
-
-      const qrUrl =
-        "https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=" +
-        encodeURIComponent(phoneUrl);
+      const phoneUrl = makePhoneUrl(room, sessionId);
 
       appEl.innerHTML = `
         <canvas id="canvas"></canvas>
@@ -248,18 +409,57 @@
         <div class="centerPanel" id="qrPanel">
           <h1>スマホを接続</h1>
           <p>
-            パソコンとスマホをインターネットに接続してください。<br>
             スマホで QR コードを読み取り、<br>
             センサーを開始してください。
           </p>
-          <img id="qr" src="${qrUrl}" alt="QR code" />
-          <div id="roomText">room: ${room}<br>session: ${sessionId}</div>
+
+          <img id="qr" alt="QR code" />
+
+          <div id="qrError">
+            QR 画像を読み込めませんでした。<br>
+            下のスマホ用リンクをコピーして、スマホのブラウザで開いてください。
+          </div>
+
+          <textarea class="urlBox" id="phoneUrlBox" readonly></textarea>
+          <button class="smallButton" id="copyButton">スマホ用リンクをコピー</button>
+
+          <div id="roomText">
+            room: ${escapeHtml(room)}<br>
+            session: ${escapeHtml(sessionId)}
+          </div>
         </div>
       `;
 
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
       const qrPanel = document.getElementById("qrPanel");
+      const qrImg = document.getElementById("qr");
+      const qrError = document.getElementById("qrError");
+      const phoneUrlBox = document.getElementById("phoneUrlBox");
+      const copyButton = document.getElementById("copyButton");
+
+      phoneUrlBox.value = phoneUrl;
+      qrImg.src = makeQrUrl(phoneUrl);
+
+      qrImg.addEventListener("error", () => {
+        qrImg.style.display = "none";
+        qrError.style.display = "block";
+        statusEl.textContent = "QR image failed / use phone link";
+      });
+
+      copyButton.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(phoneUrl);
+          copyButton.textContent = "コピーしました";
+          setTimeout(() => {
+            copyButton.textContent = "スマホ用リンクをコピー";
+          }, 1200);
+        } catch (error) {
+          phoneUrlBox.focus();
+          phoneUrlBox.select();
+          copyButton.textContent = "手動でコピーしてください";
+        }
+      });
 
       let width = 0;
       let height = 0;
@@ -275,8 +475,8 @@
         width = window.innerWidth;
         height = window.innerHeight;
 
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
 
@@ -286,9 +486,9 @@
       resizeCanvas();
       window.addEventListener("resize", resizeCanvas);
 
-      const pointerRef = ref(db, `rooms/${room}/sessions/${sessionId}/pointer`);
+      const pointerRef = dbRef(db, `rooms/${room}/sessions/${sessionId}/pointer`);
 
-      onValue(pointerRef, (snapshot) => {
+      dbOnValue(pointerRef, (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
         if (data.sessionId !== sessionId) return;
@@ -299,12 +499,15 @@
 
         connected = true;
         statusEl.textContent =
-          `connected / x:${targetX.toFixed(2)} y:${targetY.toFixed(2)}`;
+          `connected / x:${targetX.toFixed(2)} y:${targetY.toFixed(2)} / ${data.mode || "sensor"}`;
 
         if (qrPanel) {
           qrPanel.style.opacity = "0";
           qrPanel.style.pointerEvents = "none";
         }
+      }, (error) => {
+        statusEl.textContent = "Firebase read error";
+        console.error(error);
       });
 
       function drawLight() {
@@ -351,7 +554,7 @@
       drawLight();
     }
 
-    function startPhone() {
+    function startPhone(params) {
       const room = params.get("room");
       const sessionId = params.get("session");
 
@@ -361,8 +564,7 @@
             <div class="phoneCard">
               <div class="phoneTitle">接続情報がありません</div>
               <div class="phoneText">
-                パソコン画面の QR コードから開いてください。<br>
-                通常のリンクを直接開いた場合、操作できません。
+                パソコン画面の QR コード、またはスマホ用リンクから開いてください。
               </div>
             </div>
           </div>
@@ -376,7 +578,6 @@
           <div class="phoneCard">
             <div class="phoneTitle">レーザーポインター</div>
             <div class="phoneText">
-              パソコンとスマホをインターネットに接続してください。<br>
               スマホをパソコン画面の中心に向けて、<br>
               「センサーを開始」を押してください。
             </div>
@@ -386,6 +587,11 @@
 
             <div class="meter">
               <div class="meterFill" id="meterFill"></div>
+            </div>
+
+            <div class="touchPad" id="touchPad">
+              <div class="touchPadLabel">センサーが使えない場合はここをなぞる</div>
+              <div class="touchDot" id="touchDot"></div>
             </div>
 
             <div class="smallText" id="phoneInfo">
@@ -399,8 +605,10 @@
       const centerButton = document.getElementById("centerButton");
       const phoneInfo = document.getElementById("phoneInfo");
       const meterFill = document.getElementById("meterFill");
+      const touchPad = document.getElementById("touchPad");
+      const touchDot = document.getElementById("touchDot");
 
-      const pointerRef = ref(db, `rooms/${room}/sessions/${sessionId}/pointer`);
+      const pointerRef = dbRef(db, `rooms/${room}/sessions/${sessionId}/pointer`);
 
       let latestBeta = 0;
       let latestGamma = 0;
@@ -417,6 +625,8 @@
 
       let lastSendTime = 0;
       let sensorStarted = false;
+      let usingTouchPad = false;
+      let touchActive = false;
 
       const rangeAngleX = 16;
       const rangeAngleY = 14;
@@ -445,25 +655,36 @@
         return orientationAllowed;
       }
 
+      function updateMeter() {
+        const moveAmount =
+          Math.abs(pointerX - 0.5) +
+          Math.abs(pointerY - 0.5);
+
+        meterFill.style.width = clamp(moveAmount * 180, 0, 100) + "%";
+      }
+
+      function updateTouchDot() {
+        touchDot.style.left = (pointerX * 100) + "%";
+        touchDot.style.top = (pointerY * 100) + "%";
+      }
+
       function sendPointer(force = false) {
         const now = Date.now();
 
         if (!force && now - lastSendTime < 33) return;
         lastSendTime = now;
 
-        const moveAmount =
-          Math.abs(pointerX - 0.5) +
-          Math.abs(pointerY - 0.5);
+        updateMeter();
+        updateTouchDot();
 
-        meterFill.style.width = clamp(moveAmount * 180, 0, 100) + "%";
-
-        set(pointerRef, {
+        dbSet(pointerRef, {
           state: "active",
           sessionId: sessionId,
           pointerX: pointerX,
           pointerY: pointerY,
           beta: latestBeta,
           gamma: latestGamma,
+          mode: usingTouchPad ? "touch" : "sensor",
           time: now
         }).catch((error) => {
           phoneInfo.textContent = "Firebase への送信に失敗しました。Rules を確認してください。";
@@ -479,6 +700,7 @@
         centerBeta = latestBeta;
         centerGamma = latestGamma;
         centerReady = true;
+        usingTouchPad = false;
 
         pointerX = 0.5;
         pointerY = 0.5;
@@ -498,6 +720,8 @@
       }
 
       function handleOrientation(event) {
+        if (usingTouchPad) return;
+
         const beta = validNumber(event.beta, latestBeta);
         const gamma = validNumber(event.gamma, latestGamma);
 
@@ -522,12 +746,24 @@
         sendPointer(false);
       }
 
+      function setPointerFromTouch(event) {
+        const rect = touchPad.getBoundingClientRect();
+
+        pointerX = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+        pointerY = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+
+        usingTouchPad = true;
+        phoneInfo.textContent = "タッチ操作で送信しています。センサーに戻す場合は中心を再設定してください。";
+
+        sendPointer(true);
+      }
+
       startButton.addEventListener("click", async () => {
         try {
           const allowed = await requestPermissions();
 
           if (!allowed) {
-            phoneInfo.textContent = "センサーの使用が許可されませんでした。";
+            phoneInfo.textContent = "センサーの使用が許可されませんでした。下のエリアをなぞると手動操作できます。";
             statusEl.textContent = "permission denied";
             return;
           }
@@ -538,12 +774,13 @@
           }
 
           pendingCenterReset = true;
+          usingTouchPad = false;
 
           startButton.textContent = "センサー作動中";
           phoneInfo.textContent = "スマホを画面中央に向けたまま、少し待ってください。";
           statusEl.textContent = `room: ${room} / sensor started`;
         } catch (error) {
-          phoneInfo.textContent = "センサー開始時にエラーが発生しました。";
+          phoneInfo.textContent = "センサー開始時にエラーが発生しました。下のエリアをなぞると手動操作できます。";
           statusEl.textContent = "sensor error";
           console.error(error);
         }
@@ -553,7 +790,27 @@
         requestCenterReset();
       });
 
+      touchPad.addEventListener("pointerdown", (event) => {
+        touchActive = true;
+        touchPad.setPointerCapture(event.pointerId);
+        setPointerFromTouch(event);
+      });
+
+      touchPad.addEventListener("pointermove", (event) => {
+        if (!touchActive) return;
+        setPointerFromTouch(event);
+      });
+
+      touchPad.addEventListener("pointerup", () => {
+        touchActive = false;
+      });
+
+      touchPad.addEventListener("pointercancel", () => {
+        touchActive = false;
+      });
+
       statusEl.textContent = `room: ${room}`;
+      updateTouchDot();
     }
   </script>
 </body>
