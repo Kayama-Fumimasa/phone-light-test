@@ -167,7 +167,7 @@
       height: 100%;
       border-radius: 999px;
       background: white;
-      transition: width 0.04s linear;
+      transition: width 0.06s linear;
     }
   </style>
 </head>
@@ -181,14 +181,14 @@
     import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 
     const firebaseConfig = {
-      apiKey: "AIzaSyDAbRihqZUzLjBEmUDcRKztlSbgxkESs4M",
-      authDomain: "phone-light-test.firebaseapp.com",
-      databaseURL: "https://phone-light-test-default-rtdb.firebaseio.com/",
-      projectId: "phone-light-test",
-      storageBucket: "phone-light-test.firebasestorage.app",
-      messagingSenderId: "720544705799",
-      appId: "1:720544705799:web:d417c7dbaebc7f8f6e29a2",
-      measurementId: "G-8524Q5F6WQ"
+      apiKey: "ここをあなたの Firebase 設定に戻してください",
+      authDomain: "ここをあなたの Firebase 設定に戻してください",
+      databaseURL: "ここをあなたの Firebase 設定に戻してください",
+      projectId: "ここをあなたの Firebase 設定に戻してください",
+      storageBucket: "ここをあなたの Firebase 設定に戻してください",
+      messagingSenderId: "ここをあなたの Firebase 設定に戻してください",
+      appId: "ここをあなたの Firebase 設定に戻してください",
+      measurementId: "ここをあなたの Firebase 設定に戻してください"
     };
 
     const firebaseApp = initializeApp(firebaseConfig);
@@ -229,9 +229,6 @@
       startDisplay();
     }
 
-    // =====================================================
-    // PC DISPLAY
-    // =====================================================
     function startDisplay() {
       const room = makeRoomId();
       const sessionId = makeSessionId();
@@ -271,7 +268,7 @@
       let targetY = 0.5;
       let smoothX = 0.5;
       let smoothY = 0.5;
-      let lastReceivedTime = 0;
+      let connected = false;
 
       function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
@@ -294,14 +291,14 @@
       onValue(pointerRef, (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
-
         if (data.sessionId !== sessionId) return;
 
         targetX = clamp(validNumber(data.pointerX, 0.5), 0, 1);
         targetY = clamp(validNumber(data.pointerY, 0.5), 0, 1);
-        lastReceivedTime = validNumber(data.time, Date.now());
 
-        statusEl.textContent = "connected / laser pointer";
+        connected = true;
+        statusEl.textContent =
+          `connected / x:${targetX.toFixed(2)} y:${targetY.toFixed(2)}`;
 
         if (qrPanel) {
           qrPanel.style.opacity = "0";
@@ -310,13 +307,9 @@
       });
 
       function drawLight() {
-        const dataIsFresh = Date.now() - lastReceivedTime < 1200;
-
-        if (dataIsFresh) {
-          // 数字を大きくすると反応が速くなる。
-          // 1.0 にすると完全追従するが、少し揺れやすい。
-          smoothX += (targetX - smoothX) * 0.70;
-          smoothY += (targetY - smoothY) * 0.70;
+        if (connected) {
+          smoothX += (targetX - smoothX) * 0.62;
+          smoothY += (targetY - smoothY) * 0.62;
         }
 
         const dotX = smoothX * width;
@@ -357,9 +350,6 @@
       drawLight();
     }
 
-    // =====================================================
-    // PHONE CONTROLLER
-    // =====================================================
     function startPhone() {
       const room = params.get("room");
       const sessionId = params.get("session");
@@ -427,9 +417,6 @@
       let lastSendTime = 0;
       let sensorStarted = false;
 
-      // 角度範囲：
-      // 数字が小さいほど敏感。数字が大きいほど安定。
-      // 例：14, 12 は敏感。24, 20 は安定。
       const rangeAngleX = 16;
       const rangeAngleY = 14;
 
@@ -445,7 +432,6 @@
 
       async function requestPermissions() {
         let orientationAllowed = true;
-        let motionAllowed = true;
 
         if (
           typeof DeviceOrientationEvent !== "undefined" &&
@@ -455,23 +441,13 @@
           orientationAllowed = result === "granted";
         }
 
-        if (
-          typeof DeviceMotionEvent !== "undefined" &&
-          typeof DeviceMotionEvent.requestPermission === "function"
-        ) {
-          const result = await DeviceMotionEvent.requestPermission();
-          motionAllowed = result === "granted";
-        }
-
-        return orientationAllowed || motionAllowed;
+        return orientationAllowed;
       }
 
       function sendPointer(force = false) {
         const now = Date.now();
 
-        // 16ms で約60fps。
-        // 反応を優先して、以前より高頻度に送信する。
-        if (!force && now - lastSendTime < 16) return;
+        if (!force && now - lastSendTime < 33) return;
         lastSendTime = now;
 
         const moveAmount =
@@ -488,6 +464,9 @@
           gamma: latestGamma,
           time: now
         });
+
+        statusEl.textContent =
+          `sending / x:${pointerX.toFixed(2)} y:${pointerY.toFixed(2)}`;
       }
 
       function setCurrentDirectionAsCenter() {
@@ -531,9 +510,6 @@
         const offsetX = angleToScreenOffset(deltaGamma, rangeAngleX);
         const offsetY = angleToScreenOffset(deltaBeta, rangeAngleY);
 
-        // 方向反転済み：
-        // スマホを右へ向ける → 光点も右
-        // スマホを上へ向ける → 光点も上
         pointerX = clamp(0.5 - offsetX, 0, 1);
         pointerY = clamp(0.5 - offsetY, 0, 1);
 
@@ -559,7 +535,7 @@
 
           startButton.textContent = "センサー作動中";
           phoneInfo.textContent = "スマホを画面中央に向けたまま、少し待ってください。";
-          statusEl.textContent = `room: ${room} / laser pointer`;
+          statusEl.textContent = `room: ${room} / sensor started`;
         } catch (error) {
           phoneInfo.textContent = "センサー開始時にエラーが発生しました。";
           statusEl.textContent = "sensor error";
