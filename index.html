@@ -181,14 +181,14 @@
     import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 
     const firebaseConfig = {
-      apiKey: "ここをあなたの Firebase 設定に戻してください",
-      authDomain: "ここをあなたの Firebase 設定に戻してください",
-      databaseURL: "ここをあなたの Firebase 設定に戻してください",
-      projectId: "ここをあなたの Firebase 設定に戻してください",
-      storageBucket: "ここをあなたの Firebase 設定に戻してください",
-      messagingSenderId: "ここをあなたの Firebase 設定に戻してください",
-      appId: "ここをあなたの Firebase 設定に戻してください",
-      measurementId: "ここをあなたの Firebase 設定に戻してください"
+      apiKey: "AIzaSyDAbRihqZUzLjBEmUDcRKztlSbgxkESs4M",
+      authDomain: "phone-light-test.firebaseapp.com",
+      databaseURL: "https://phone-light-test-default-rtdb.firebaseio.com/",
+      projectId: "phone-light-test",
+      storageBucket: "phone-light-test.firebasestorage.app",
+      messagingSenderId: "720544705799",
+      appId: "1:720544705799:web:d417c7dbaebc7f8f6e29a2",
+      measurementId: "G-8524Q5F6WQ"
     };
 
     const firebaseApp = initializeApp(firebaseConfig);
@@ -463,6 +463,10 @@
           beta: latestBeta,
           gamma: latestGamma,
           time: now
+        }).catch((error) => {
+          phoneInfo.textContent = "Firebase への送信に失敗しました。Rules を確認してください。";
+          statusEl.textContent = "firebase write error";
+          console.error(error);
         });
 
         statusEl.textContent =
