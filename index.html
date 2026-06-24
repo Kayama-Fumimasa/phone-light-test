@@ -232,14 +232,12 @@
     // PC DISPLAY
     // =====================================================
     function startDisplay() {
-      const room = params.get("room") || makeRoomId();
+      const room = makeRoomId();
+      const sessionId = `${Date.now().toString(36)}-${makeRoomId()}`;
 
-      const displayUrl = `${getBaseUrl()}?mode=display&room=${room}`;
-      const phoneUrl = `${getBaseUrl()}?mode=phone&room=${room}`;
+      const phoneUrl = `${getBaseUrl()}?mode=phone&room=${room}&session=${sessionId}`;
 
-      if (!params.get("room")) {
-        history.replaceState(null, "", displayUrl);
-      }
+      history.replaceState(null, "", getBaseUrl());
 
       const qrUrl =
         "https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=" +
@@ -293,6 +291,8 @@
       onValue(pointerRef, (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
+
+        if (data.sessionId !== sessionId) return;
 
         targetX = clamp(validNumber(data.pointerX, 0.5), 0, 1);
         targetY = clamp(validNumber(data.pointerY, 0.5), 0, 1);
@@ -356,9 +356,9 @@
     // PHONE CONTROLLER
     // =====================================================
     function startPhone() {
-      const room = params.get("room");
+      const sessionId = params.get("session");
 
-      if (!room) {
+      if (!room || !sessionId) {
         appEl.innerHTML = `
           <div class="phoneScreen">
             <div class="phoneCard">
@@ -461,6 +461,7 @@
         meterFill.style.width = clamp(moveAmount * 180, 0, 100) + "%";
 
         set(pointerRef, {
+          sessionId: sessionId,
           pointerX: pointerX,
           pointerY: pointerY,
           beta: latestBeta,
@@ -495,8 +496,8 @@
         const deltaBeta = deadzone(beta - centerBeta);
         const deltaGamma = deadzone(gamma - centerGamma);
 
-        pointerX = clamp(0.5 + deltaGamma * sensitivityX, 0, 1);
-        pointerY = clamp(0.5 + deltaBeta * sensitivityY, 0, 1);
+        pointerX = clamp(0.5 - deltaGamma * sensitivityX, 0, 1);
+        pointerY = clamp(0.5 - deltaBeta * sensitivityY, 0, 1);
 
         sendPointer(false);
       }
